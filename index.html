@@ -50,7 +50,7 @@
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { 
             Atom, FlaskConical, Users, Copy, Check, AlertTriangle, 
-            ArrowRightLeft, Play, RotateCcw, Crown, LogOut, Loader2, X, RefreshCcw, LayoutGrid, Menu, History, Trash2, Medal
+            ArrowRightLeft, Play, RotateCcw, Crown, LogOut, Loader2, X, RefreshCcw, LayoutGrid, Menu, History, Trash2, Medal, ClipboardCopy
         } from 'https://esm.sh/lucide-react@0.263.1';
 
         // ==========================================
@@ -316,8 +316,6 @@
                         // Check for trade rejection notifications
                         const lastLog = data.logs[data.logs.length - 1];
                         if (lastLog && lastLog.text.includes("відхилив обмін від") && lastLog.text.includes(user.uid)) {
-                             // This is a bit of a hacky way to notify using logs, but it works for simple apps
-                             // Improved: use a temporary local check against time
                              if (Date.now() - lastLog.time < 5000) {
                                  setNotification({ type: 'error', msg: "Вашу пропозицію обміну відхилено!" });
                              }
@@ -351,6 +349,20 @@
             }, [myPlayer?.hand]);
 
             // --- ДІЇ ---
+
+            const copyToClipboard = (text) => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    setNotification({ type: 'success', msg: 'Код скопійовано!' });
+                } catch (err) {
+                    console.error('Failed to copy', err);
+                }
+                document.body.removeChild(textArea);
+            };
 
             const createGame = async () => {
                 if (!user || !db) return;
@@ -611,7 +623,7 @@
                     await updateDoc(gameRef, { 
                         activeTrade: null, 
                         // Generic log, but specific rejection hint for sender
-                        logs: arrayUnion({ text: `${myPlayer.name} відхилив обмін від ${trade.fromUid}`, time: Date.now() }) 
+                        logs: arrayUnion({ text: `${myPlayer.name} відхилив обмін від ${trade.fromName}`, time: Date.now() }) 
                     });
                     return;
                 }
@@ -729,7 +741,12 @@
                 return (
                     <div className="min-h-screen bg-[#f7f7f7] flex flex-col items-center justify-center p-4">
                         <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-lg text-center border-t-8 border-[#006400]">
-                        <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-[#006400] font-serif">Кімната: {gameId}</h2>
+                        <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-[#006400] font-serif flex items-center justify-center gap-2">
+                            Кімната: {gameId}
+                            <button onClick={() => copyToClipboard(gameId)} className="p-1 hover:bg-gray-100 rounded text-gray-500">
+                                <ClipboardCopy size={20} />
+                            </button>
+                        </h2>
                         <div className="bg-gray-50 rounded-xl p-4 mb-6">
                             <h3 className="text-xs uppercase text-gray-400 font-bold mb-3 tracking-widest">Гравці в очікуванні</h3>
                             <div className="space-y-2">
@@ -753,6 +770,12 @@
                             </button>
                         ) : <p className="text-gray-500 animate-pulse text-sm">Чекаємо організатора...</p>}
                         </div>
+                        {notification && (
+                            <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl shadow-lg text-white font-bold z-[100] text-sm ${notification.type==='error'?'bg-red-500':'bg-green-600'}`}>
+                                {notification.msg}
+                                {setTimeout(()=>setNotification(null), 3000) && ""}
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -792,7 +815,12 @@
                     <header className="md:hidden bg-white border-b px-3 sm:px-4 py-2 flex flex-col shadow-sm z-30 shrink-0">
                         <div className="flex justify-between items-center w-full mb-2">
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <div className="bg-[#006400] text-[#fceeb5] px-2 sm:px-3 py-1 rounded font-bold font-serif shadow-sm tracking-wider text-xs sm:text-sm">{gameId}</div>
+                                <div className="bg-[#006400] text-[#fceeb5] px-2 sm:px-3 py-1 rounded font-bold font-serif shadow-sm tracking-wider text-xs sm:text-sm flex items-center gap-1">
+                                    {gameId}
+                                    <button onClick={() => copyToClipboard(gameId)} className="ml-1 hover:text-white">
+                                        <ClipboardCopy size={12} />
+                                    </button>
+                                </div>
                                 <div className="text-[10px] sm:text-xs text-gray-400 hidden sm:block">Колода: {gameData.elementDeck.length}</div>
                             </div>
                             
@@ -1028,13 +1056,25 @@
 
                     {/* Desktop Sidebar (Moved to end of flex container for md:flex-row layout) */}
                     <aside className="w-64 bg-white border-l hidden md:flex flex-col shadow-lg z-20 shrink-0 h-full relative">
-                        <div className="p-5 border-b bg-gray-50">
-                            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Таблиця лідерів</h3>
+                        <div className="p-5 border-b bg-gray-50 flex flex-col gap-2">
+                             <div className="flex justify-between items-center mb-2">
+                                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Таблиця лідерів</h3>
+                                <div className="flex items-center gap-1 bg-gray-200 px-2 py-0.5 rounded text-[10px] font-bold text-gray-600">
+                                    <span>Код: {gameId}</span>
+                                    <button onClick={() => copyToClipboard(gameId)} className="hover:text-black">
+                                        <ClipboardCopy size={10} />
+                                    </button>
+                                </div>
+                            </div>
+                            
                             {gameData.players.map((p, idx) => (
-                                <div key={p.uid} className={`flex items-center justify-between p-3 rounded-xl mb-2 transition-all ${gameData.turnIndex === idx ? 'bg-white border-2 border-green-500 shadow-md transform scale-105' : 'bg-gray-100 border border-transparent'}`}>
+                                <div key={p.uid} className={`flex items-center justify-between p-3 rounded-xl mb-1 transition-all ${gameData.turnIndex === idx ? 'bg-white border-2 border-green-500 shadow-md transform scale-105' : 'bg-gray-100 border border-transparent'}`}>
                                     <div className="flex items-center gap-2 overflow-hidden">
-                                    <div className={`w-2 h-2 rounded-full ${gameData.turnIndex === idx ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                                    <span className="font-bold text-sm truncate">{p.name}</span>
+                                        <div className={`w-2 h-2 rounded-full ${gameData.turnIndex === idx ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                                        <div className="flex flex-col overflow-hidden">
+                                            <span className="font-bold text-sm truncate">{p.name} {p.uid === user.uid && '(Ви)'}</span>
+                                            <span className="text-[10px] text-gray-500 font-mono">Карт: {p.hand.length} | Мол: {p.molecules.length}</span>
+                                        </div>
                                     </div>
                                     <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-md font-bold shadow-sm">{p.score} VP</div>
                                 </div>
