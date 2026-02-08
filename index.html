@@ -290,7 +290,7 @@
         // Імпорт іконок Lucide
         import { 
             FlaskConical, ArrowRightLeft, Crown, LogOut, Loader2, X, 
-            History, Trash2, RefreshCcw, CheckCircle2, Menu, Plus, Minus, User, Info
+            History, Trash2, RefreshCcw, CheckCircle2, Menu, Plus, Minus, User, Info, Scale
         } from 'https://esm.sh/lucide-react@0.263.1';
 
         // ==========================================
@@ -322,7 +322,6 @@
         // БАЗА ДАНИХ ГРИ (ЕЛЕМЕНТИ ТА МОЛЕКУЛИ)
         // ==========================================
         
-        // Маси округлені до цілих, окрім Cl (35.5)
         const ELEMENTS = {
             'H':  { m: 1,  name: 'Гідроген' },
             'O':  { m: 16, name: 'Оксиген' },
@@ -568,7 +567,6 @@
             
             // Торгівля
             const [isTradeModalOpen, setTradeModalOpen] = useState(false);
-            const [tradeTab, setTradeTab] = useState('bank'); // 'bank' | 'player'
             // Для обміну з гравцями: масив бажаних карт
             const [tradeWant, setTradeWant] = useState([]); 
 
@@ -608,7 +606,16 @@
             
             const turnPhase = gameData?.turnPhase; // 'draw', 'action', 'discard_force'
             const isDiscardPhase = turnPhase === 'discard_force' && isMyTurn;
-            const cardsToDiscard = isDiscardPhase && myPlayer ? Math.max(0, myPlayer.hand.length - 10) : 0;
+            
+            // ОНОВЛЕНА ЛОГІКА СКИДАННЯ: Якщо карт > 10, скидаємо половину (округлено вниз)
+            const calculateCardsToDiscard = () => {
+                if (!myPlayer) return 0;
+                if (myPlayer.hand.length > 10) {
+                    return Math.floor(myPlayer.hand.length / 2);
+                }
+                return 0;
+            };
+            const cardsToDiscard = isDiscardPhase ? calculateCardsToDiscard() : 0;
 
             // Функція для показу сповіщень
             const showNotification = (type, msg) => {
@@ -705,7 +712,6 @@
                 let deck = [...gameData.elementDeck];
                 if (deck.length < 2) {
                      showNotification('error', 'Колода елементів вичерпана!'); 
-                     // Тут можна додати логіку перетасовки скиду, якщо буде реалізовано
                      return; 
                 }
 
@@ -713,6 +719,7 @@
                 const players = [...gameData.players];
                 players[myIndex].hand.push(...drawn);
                 
+                // Перевірка на скидання карт (якщо > 10)
                 const nextPhase = players[myIndex].hand.length > 10 ? 'discard_force' : 'action';
 
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), {
@@ -738,7 +745,7 @@
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), {
                     players: players,
                     turnPhase: 'action',
-                    logs: arrayUnion({ text: `${myPlayer.name} очистив інвентар`, time: Date.now() })
+                    logs: arrayUnion({ text: `${myPlayer.name} очистив інвентар (${cardsToDiscard} карт)`, time: Date.now() })
                 });
                 setSelectedCards([]);
             };
@@ -793,7 +800,7 @@
             };
 
             // ==========================================
-            // НОВА ЛОГІКА ТОРГІВЛІ (Advanced Trade)
+            // ВИПРАВЛЕНА ЛОГІКА ТОРГІВЛІ
             // ==========================================
 
             const addToTradeWant = (el) => {
@@ -807,7 +814,7 @@
             // 1. Обмін з БАНКОМ (3:1)
             const executeBankTrade = async () => {
                 if (selectedCards.length !== 3) {
-                    return showNotification('error', "Для банку оберіть рівно 3 карти!");
+                    return showNotification('error', "Для банку оберіть 3 карти у себе в руці (на головному екрані)!");
                 }
                 const first = myPlayer.hand[selectedCards[0]];
                 if (!selectedCards.every(i => myPlayer.hand[i] === first)) {
@@ -837,7 +844,7 @@
             // 2. Створення пропозиції для ГРАВЦІВ
             const createPlayerTrade = async () => {
                 if (selectedCards.length === 0) {
-                    return showNotification('error', "Оберіть карти, які ви віддаєте!");
+                    return showNotification('error', "Спочатку оберіть карти в руці, які ви віддаєте!");
                 }
                 if (tradeWant.length === 0) {
                     return showNotification('error', "Оберіть карти, які ви хочете!");
@@ -934,6 +941,12 @@
                     if (!myCounts[el] || myCounts[el] < wantCounts[el]) return false;
                 }
                 return true;
+            };
+
+            // Функція відкриття модалки торгівлі
+            const openTradeModal = () => {
+                setTradeWant([]); 
+                setTradeModalOpen(true);
             };
 
 
@@ -1144,7 +1157,7 @@
                                     {turnPhase === 'action' && (
                                         <div className="flex gap-2 bg-[#06120a]/90 backdrop-blur p-2 rounded-full border border-green-600 shadow-xl">
                                             <button 
-                                                onClick={() => { setTradeModalOpen(true); setSelectedCards([]); setTradeWant([]); }} 
+                                                onClick={openTradeModal} 
                                                 className="bg-purple-800 text-purple-100 px-5 py-2 rounded-full font-bold text-xs uppercase hover:bg-purple-700 flex items-center gap-2 transition-colors"
                                             >
                                                 <RefreshCcw size={16}/> ОБМІН
@@ -1221,30 +1234,13 @@
                         </div>
                     </div>
 
-                    {/* МОДАЛЬНЕ ВІКНО ТОРГІВЛІ (Advanced) */}
+                    {/* МОДАЛЬНЕ ВІКНО ТОРГІВЛІ (Виправлене) */}
                     <Modal isOpen={isTradeModalOpen} onClose={() => setTradeModalOpen(false)} title="Торгова Гільдія">
-                        {/* Перемикач режимів */}
-                        <div className="flex mb-4 bg-green-100 p-1 rounded-xl">
-                            <button 
-                                onClick={() => {setTradeTab('bank'); setTradeWant([]);}} 
-                                className={`flex-1 py-3 rounded-lg font-bold text-xs uppercase transition-all flex flex-col items-center ${tradeTab==='bank' ? 'bg-yellow-600 text-white shadow' : 'text-green-800 hover:bg-green-200'}`}
-                            >
-                                <span className="text-sm">Банк</span>
-                                <span className="opacity-70 text-[10px]">Курс 3:1</span>
-                            </button>
-                            <button 
-                                onClick={() => {setTradeTab('player'); setTradeWant([]);}} 
-                                className={`flex-1 py-3 rounded-lg font-bold text-xs uppercase transition-all flex flex-col items-center ${tradeTab==='player' ? 'bg-purple-700 text-white shadow' : 'text-green-800 hover:bg-green-200'}`}
-                            >
-                                <span className="text-sm">Гравці</span>
-                                <span className="opacity-70 text-[10px]">Вільний курс</span>
-                            </button>
-                        </div>
-
-                        {/* КРОК 1: Що віддаємо */}
+                        
+                        {/* Відображення того, що вже обрано в руці */}
                         <div className="mb-4">
                             <h4 className="text-[10px] font-bold text-green-800 uppercase mb-2 flex justify-between">
-                                <span>1. Ви віддаєте (Оберіть карти в руці):</span>
+                                <span>1. Ви віддаєте (Обрано з руки):</span>
                                 <span className="text-green-600">{selectedCards.length} шт.</span>
                             </h4>
                             <div className="flex gap-2 min-h-[60px] p-2 bg-white border border-green-300 rounded-lg overflow-x-auto items-center">
@@ -1252,7 +1248,7 @@
                                     <div key={idx} className="flex flex-col items-center justify-center w-10 h-12 rounded shadow-sm shrink-0" style={{background: `var(--bg-${myPlayer.hand[idx]})`, color: `var(--main-${myPlayer.hand[idx]})`}}>
                                         <span className="font-serif font-bold text-sm">{myPlayer.hand[idx]}</span>
                                     </div>
-                                )) : <span className="text-xs text-gray-400 italic mx-auto">Натисніть на свої карти знизу екрана...</span>}
+                                )) : <span className="text-xs text-gray-400 italic mx-auto">Спочатку оберіть карти у себе в руці (знизу екрана) перед відкриттям цього вікна, або закрийте його і оберіть зараз.</span>}
                             </div>
                         </div>
 
@@ -1287,10 +1283,7 @@
                                 {Object.keys(ELEMENTS).map(el => (
                                     <button 
                                         key={el} 
-                                        onClick={() => {
-                                            if (tradeTab === 'bank') setTradeWant([el]); // Для банку тільки 1 карта
-                                            else addToTradeWant(el); // Для гравців можна багато
-                                        }} 
+                                        onClick={() => addToTradeWant(el)} 
                                         className="p-1 rounded-lg border text-[10px] font-bold bg-white text-green-900 hover:bg-green-100 flex flex-col items-center transition-colors h-10 justify-center shadow-sm"
                                     >
                                         <span className="text-xs">{el}</span>
@@ -1299,16 +1292,32 @@
                             </div>
                         </div>
 
-                        {/* Кнопка підтвердження */}
-                        <button 
-                            onClick={tradeTab === 'bank' ? executeBankTrade : createPlayerTrade} 
-                            className={`
-                                w-full py-4 rounded-xl font-bold uppercase text-xs tracking-widest shadow-lg transition-transform active:scale-95 text-white
-                                ${tradeTab === 'bank' ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-purple-700 hover:bg-purple-600'}
-                            `}
-                        >
-                            {tradeTab === 'bank' ? 'ОБМІНЯТИ З БАНКОМ (3:1)' : 'НАДІСЛАТИ ПРОПОЗИЦІЮ ВСІМ'}
-                        </button>
+                        {/* Кнопки дій */}
+                        <div className="flex flex-col gap-3">
+                            <button 
+                                onClick={executeBankTrade} 
+                                disabled={selectedCards.length !== 3 || tradeWant.length !== 1}
+                                className={`
+                                    w-full py-3 rounded-xl font-bold uppercase text-xs tracking-widest shadow-md transition-all flex justify-between px-4
+                                    ${(selectedCards.length === 3 && tradeWant.length === 1) ? 'bg-yellow-600 text-white hover:bg-yellow-500' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
+                                `}
+                            >
+                                <span>Обмін з Банком</span>
+                                <span>3:1</span>
+                            </button>
+
+                            <button 
+                                onClick={createPlayerTrade} 
+                                disabled={selectedCards.length === 0 || tradeWant.length === 0}
+                                className={`
+                                    w-full py-3 rounded-xl font-bold uppercase text-xs tracking-widest shadow-md transition-all flex justify-between px-4
+                                    ${(selectedCards.length > 0 && tradeWant.length > 0) ? 'bg-purple-700 text-white hover:bg-purple-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
+                                `}
+                            >
+                                <span>Пропозиція Гравцям</span>
+                                <span>Всі</span>
+                            </button>
+                        </div>
                     </Modal>
 
                 </div>
